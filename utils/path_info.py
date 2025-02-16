@@ -13,4 +13,7 @@ log_path = join(root_path, 'log')
 ###############
 
 raw_data_path = join(data_path, "raw_data")
+stock_list_path = join(data_path, "stock_list")
 demo_data_path = join(data_path, "demo_data")
+main_data_path = join(data_path, "main_data")
+
