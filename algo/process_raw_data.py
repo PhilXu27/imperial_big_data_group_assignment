@@ -18,6 +18,7 @@ def process_raw_price(dt, calendar):
     dt = dt.resample("D").last()
     new_calendar = calendar.loc[start: end]
     dt = dt.loc[new_calendar.index]
+    dt = dt.ffill()
     dt.to_csv(Path(join(main_data_path, "raw_price.csv")))
     return
 
@@ -27,6 +28,7 @@ def process_adjusted_price(dt, calendar):
     dt = dt.resample("D").last()
     new_calendar = calendar.loc[start: end]
     dt = dt.loc[new_calendar.index]
+    dt = dt.ffill()
     dt_rtn = dt.pct_change().dropna(how="all")
     dt.to_csv(Path(join(main_data_path, "adjusted_price.csv")))
     dt_rtn.to_csv(Path(join(main_data_path, "adjusted_return.csv")))

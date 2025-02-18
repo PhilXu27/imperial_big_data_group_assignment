@@ -4,6 +4,23 @@ from pathlib import Path
 from os.path import join
 from gurobipy import Model, GRB, quicksum
 import numpy as np
+import functools
+import time
+
+
+def timing_decorator(func):
+    """Decorator to measure execution time of a function."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"{func.__name__} executed in {elapsed_time:.6f} seconds")
+        return result
+
+    return wrapper
 
 
 def load_data():
@@ -42,14 +59,18 @@ def load_data():
     raw_price = raw_price.loc[effective_trading_dates]
     adjusted_return = adjusted_return.loc[effective_trading_dates]
     index_return = index_return.loc[effective_trading_dates]
+    if is_demo:
+        return index_return, adjusted_return[test_list], raw_price[test_list]
+    else:
+        return index_return, adjusted_return, raw_price
 
-    return index_return, adjusted_return[test_list], raw_price[test_list]
 
-
+@timing_decorator
 def sparse_replicating_optimization(
         r_vector, h_matrix, p_matrix,
         s_prev_t, b, tau=0.5, is_turnover=True,
-        lambda1=0.01
+        lambda1=0.01,
+        is_info=True
 ):
     h_mul_p_matrix = p_matrix * h_matrix
     r_vector = r_vector
@@ -96,27 +117,30 @@ def sparse_replicating_optimization(
 
     # Extract the optimal stock holdings
     optimized_s = np.array([s[i].X for i in range(num_stocks)])
-    portfolio_value_of_stocks = sum([optimized_s[i] * p_matrix.iloc[-1, i] for i in range(num_stocks)])
-    mse = sum(
-        (r_vector.iloc[t, 0] - sum(h_mul_p_matrix.iloc[t, i] * optimized_s[i] / b for i in range(num_stocks))) ** 2
-        for t in range(window_size)
-    ) / window_size
+    if is_info:
+        portfolio_value_of_stocks = sum([optimized_s[i] * p_matrix.iloc[-1, i] for i in range(num_stocks)])
+        mse = sum(
+            (r_vector.iloc[t, 0] - sum(h_mul_p_matrix.iloc[t, i] * optimized_s[i] / b for i in range(num_stocks))) ** 2
+            for t in range(window_size)
+        ) / window_size
 
-    mae = sum(
-        abs(r_vector.iloc[t, 0] - sum(h_mul_p_matrix.iloc[t, i] * optimized_s[i] / b for i in range(num_stocks)))
-        for t in range(window_size)
-    ) / window_size
-    l1_penalty_value = lambda1 * sum(p_matrix.iloc[0, i] * abs(optimized_s[i] / b) for i in range(num_stocks))
-    number_non_zero_stocks = np.count_nonzero(optimized_s)
+        mae = sum(
+            abs(r_vector.iloc[t, 0] - sum(h_mul_p_matrix.iloc[t, i] * optimized_s[i] / b for i in range(num_stocks)))
+            for t in range(window_size)
+        ) / window_size
+        l1_penalty_value = lambda1 * sum(p_matrix.iloc[0, i] * abs(optimized_s[i] / b) for i in range(num_stocks))
+        number_non_zero_stocks = np.count_nonzero(optimized_s)
 
-    info = {
-        "in_sample_mse": mse,
-        "in_sample_mae": mae,
-        "in_sample_l1_penalty": l1_penalty_value,
-        "portfolio_value": portfolio_value_of_stocks,
-        "non_zero_stocks": number_non_zero_stocks
-    }
-    return optimized_s, info
+        info = {
+            "in_sample_mse": mse,
+            "in_sample_mae": mae,
+            "in_sample_l1_penalty": l1_penalty_value,
+            "portfolio_value": portfolio_value_of_stocks,
+            "non_zero_stocks": number_non_zero_stocks
+        }
+        return optimized_s, info
+    else:
+        return optimized_s
 
 
 def replicating_performance_analysis(
@@ -145,15 +169,19 @@ def calculater_replicating_mse(r_vector, h_matrix, p_matrix, stocks, b):
 
 
 def construct_sparse_portfolio(r_vector, h_matrix, p_matrix, **kwargs):
+    best_lambda_lasso = 0
     common_cols = h_matrix.columns.intersection(p_matrix.columns)
     b = kwargs.get("b")
     tau = kwargs.get("tau")
     is_turnover = kwargs.get("is_turnover")
 
-    in_sample_info_all = pd.DataFrame()
+    in_sample_info_all = pd.DataFrame(index=r_vector.index, columns=[
+        "in_sample_mse", "in_sample_mae", "in_sample_l1_penalty", "portfolio_value", "non_zero_stocks"
+    ])
     portfolio_positions = pd.DataFrame(index=r_vector.index, columns=common_cols)
 
     replicating_results = pd.DataFrame(r_vector.index, columns=["replicating_error"])
+    lambda_select_indicator = 0
     for t in range(window_size + validation_window_size, r_vector.shape[0], holding_period):
         s_prev_t = portfolio_positions.iloc[t - holding_period]
 
@@ -177,15 +205,27 @@ def construct_sparse_portfolio(r_vector, h_matrix, p_matrix, **kwargs):
 
         # Hyperparameter tuning, to select the lambda1
         lambda_lasso_searching_list = [0.0001, 0.0005, 0.001, 0.005, 0.01]
-        # for test_lambda in lambda_lasso_searching_list:
-        #  do training on r_vector_train, h, p; sparse_replicating_optimization
-        #  do validating/prediction on r_vector_validation, h, p; calculater_replicating_mse
+        if lambda_select_indicator % 12 == 0:
+            test_mse_result = {}
+            for test_lambda in lambda_lasso_searching_list:
+                s_optimal = sparse_replicating_optimization(
+                    r_vector_train, h_matrix_train, p_matrix_train,
+                    s_prev_t=s_prev_t, b=b, tau=tau,
+                    is_turnover=is_turnover,
+                    lambda1=test_lambda, is_info=False
+                )
+                val_mes = calculater_replicating_mse(
+                    r_vector_validation, h_matrix_validation, p_matrix_validation, s_optimal, b=b
+                )
+                test_mse_result[test_lambda] = val_mes
+            best_lambda_lasso = max(test_mse_result, key=test_mse_result.get)
+        lambda_select_indicator += 1
 
         # After selecting the best lambda_lasso
-        lambda_lasso = 0.0001
+        lambda_lasso = best_lambda_lasso
         s_optimal, in_sample_info = sparse_replicating_optimization(
             r_vector_final_train, h_matrix_final_train, p_matrix_final_train, s_prev_t=s_prev_t, b=b, tau=tau,
-            lambda1=lambda_lasso,
+            lambda1=lambda_lasso, is_turnover=is_turnover
         )
         oos_performance_df, oos_error_info = replicating_performance_analysis(
             r_vector_final_test, h_matrix_final_test, p_matrix_final_test, s_optimal, b=b
@@ -194,8 +234,7 @@ def construct_sparse_portfolio(r_vector, h_matrix, p_matrix, **kwargs):
 
     # save file local path
 
-    # seaborn,
-    # Simple Lasso vs Our version, Port Value change over time.
+    # seaborn
     return
 
 
@@ -207,13 +246,13 @@ def main(**kwargs):
 
 if __name__ == '__main__':
     start, end = "2005-01-05", "2025-01-31"
-    window_size = 252
-    validation_window_size = 10
-    holding_period = 5
+    window_size = 252 * 5
+    validation_window_size = 21 * 3
+    holding_period = 21
     constraint_param = {
         "b": 10000,
         "tau": 0.3,
         "is_turnover": True
     }
+    is_demo = True
     main(**constraint_param)
-
