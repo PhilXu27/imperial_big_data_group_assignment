@@ -6,7 +6,6 @@ from gurobipy import Model, GRB, quicksum
 import numpy as np
 import functools
 import time
-import logging
 
 
 def timing_decorator(func):
@@ -70,8 +69,36 @@ def load_data(mode, start_date, end_date):
     return index_return, adjusted_return[test_list], raw_price[test_list]
 
 
-@timing_decorator
 def sparse_replicating_optimization(
+        r_vector, h_matrix, p_matrix,
+        s_prev_t, b, tau=0.5, is_turnover=True,
+        lambda1=0.01,
+        is_info=True
+):
+    test_tau_list = np.arange(tau, 2.2, 0.4)
+    for test_tau in test_tau_list:
+        test_tau = min(test_tau, 2.0)
+        try:
+            optimization_result = sparse_replicating_optimization_helper(
+                r_vector, h_matrix, p_matrix,
+                s_prev_t, b, test_tau, is_turnover,
+                lambda1,
+                is_info
+            )
+            if test_tau != tau:
+                print(f"Optimization Finally Reached Optimal with Tau = {test_tau}")
+            if is_info:
+                return optimization_result[0], optimization_result[1]
+            else:
+                return optimization_result
+        except RuntimeError:
+            print(f"Optimization Failed, with Tau = {test_tau}")
+
+    raise RuntimeError
+
+
+@timing_decorator
+def sparse_replicating_optimization_helper(
         r_vector, h_matrix, p_matrix,
         s_prev_t, b, tau=0.5, is_turnover=True,
         lambda1=0.01,
@@ -103,6 +130,8 @@ def sparse_replicating_optimization(
     model.setObjective(error + l1_penalty, GRB.MINIMIZE)
 
     # Turnover Constraint: Limit changes in holdings if not the first period
+    if tau == 2.0:
+        is_turnover = False
     if is_turnover and not s_prev_t.isna().all():
         for i in range(num_stocks):
             model.addConstr(turnover_abs[i] >= (s[i] - s_prev_t[i]) * p_matrix.iloc[-1, i])
@@ -282,6 +311,7 @@ def construct_sparse_portfolio(r_vector, h_matrix, p_matrix, **kwargs):
             in_sample_info_all.loc[today, "turnover_ratio"] = in_sample_info["turnover_ratio"]
         except RuntimeError:
             print(f"Warning: could not reach optimal portfolio, at time {t}, date: {today}")
+            portfolio_positions.loc[today] = portfolio_positions.iloc[t - holding_period]
             oos_performance_df = pd.DataFrame(
                 index=h_matrix_final_test.index, columns=["index_return", "portfolio_return", "return_diff"]
             )
@@ -365,14 +395,14 @@ def continue_running_load_data(mode, start_date, end_date, holding_period, windo
 if __name__ == '__main__':
     start_date, end_date = "2005-01-05", "2025-01-31"
     window_size = 252 * 5
-    validation_window_size = window_size // 10  # 20% Validation Set
+    validation_window_size = window_size // 5  # 20% Validation Set
     holding_period = 21
-    replicating_from = holding_period * 0
-    replicating_end = holding_period * 120
+    replicating_from = holding_period * 12
+    replicating_end = holding_period * 24
 
     constraint_param = {
         "b": 10000,
-        "tau": 1.0,
+        "tau": 0.1,
         "is_turnover": True
     }
     mode = "ftse_250"  # demo, ftse_250, ftse_all_share

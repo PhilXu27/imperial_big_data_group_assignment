@@ -92,7 +92,7 @@ def main(mode):
 if __name__ == '__main__':
     start_date, end_date = "2005-01-05", "2025-01-31"
     window_size = 252 * 5
-    validation_window_size = window_size // 10  # 20% Validation Set
+    validation_window_size = window_size // 5  # 20% Validation Set
     holding_period = 21
     mode = "ftse_all_share"
     main(mode)
