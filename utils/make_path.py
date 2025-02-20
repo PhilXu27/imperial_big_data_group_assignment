@@ -11,7 +11,7 @@ def _check_dirs(path):
 
 
 def make_path():
-    check_list = [raw_data_path, demo_data_path]
+    check_list = [raw_data_path, demo_data_path, main_data_path, distributed_results]
     _check_dirs(check_list)
     return
 

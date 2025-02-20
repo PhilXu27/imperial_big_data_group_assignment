@@ -17,3 +17,9 @@ stock_list_path = join(data_path, "stock_list")
 demo_data_path = join(data_path, "demo_data")
 main_data_path = join(data_path, "main_data")
 
+###############
+# Result Path #
+###############
+distributed_results = join(result_path, "distributed_results")
+baseline_results = join(result_path, "baseline_results")
+
