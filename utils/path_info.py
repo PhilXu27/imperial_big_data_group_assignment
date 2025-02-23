@@ -22,4 +22,6 @@ main_data_path = join(data_path, "main_data")
 ###############
 distributed_results = join(result_path, "distributed_results")
 baseline_results = join(result_path, "baseline_results")
-
+paper_results = join(result_path, "paper_results")
+paper_backward_results = join(result_path, "paper_backward_results")
+final_results = join(result_path, "final_results")

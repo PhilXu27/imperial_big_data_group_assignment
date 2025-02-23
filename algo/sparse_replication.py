@@ -43,6 +43,16 @@ def load_data(mode, start_date, end_date):
         test_list = pd.read_csv(Path(join(main_data_path, "list_of_ftse_250.csv"))).columns.to_list()
     elif mode == "ftse_all_share":
         test_list = candidate_list
+    elif mode == "ftse_100":
+        test_list = pd.read_csv(Path(join(main_data_path, "list_of_ftse_100.csv"))).columns.to_list()
+    elif mode == "ftse_250_top_5_market_cap":
+        test_list = pd.read_csv(Path(join(main_data_path, "list_of_ftse_250_top_5_market_cap.csv"))).columns.to_list()
+    elif mode == "ftse_250_top_10_market_cap":
+        test_list = pd.read_csv(Path(join(main_data_path, "list_of_ftse_250_top_10_market_cap.csv"))).columns.to_list()
+    elif mode == "ftse_250_top_20_market_cap":
+        test_list = pd.read_csv(Path(join(main_data_path, "list_of_ftse_250_top_20_market_cap.csv"))).columns.to_list()
+    elif mode == "ftse_250_top_50_market_cap":
+        test_list = pd.read_csv(Path(join(main_data_path, "list_of_ftse_250_top_50_market_cap.csv"))).columns.to_list()
     else:
         raise ValueError(f"Unrecognized mode: {mode}")
 
@@ -75,7 +85,7 @@ def sparse_replicating_optimization(
         lambda1=0.01,
         is_info=True
 ):
-    test_tau_list = np.arange(tau, 2.2, 0.4)
+    test_tau_list = np.arange(tau, 2.0 + tau, 0.4)
     for test_tau in test_tau_list:
         test_tau = min(test_tau, 2.0)
         try:
@@ -121,14 +131,13 @@ def sparse_replicating_optimization_helper(
     error = quicksum(
         (r_vector.iloc[t, 0] * b - quicksum(h_mul_p_matrix.iloc[t, i] * s[i] for i in range(num_stocks))) ** 2
         for t in range(window_size)
-    )
+    )  # the window_size here, should be h_matrix.shape[0]. Here, it is the safer way, it is risky but correct.
     for i in range(num_stocks):
         model.addConstr(z[i] >= s[i] * p_matrix.iloc[-1, i])
         model.addConstr(z[i] >= -(s[i] * p_matrix.iloc[-1, i]))
 
     l1_penalty = lambda1 * b * quicksum(z[i] for i in range(num_stocks))
     model.setObjective(error + l1_penalty, GRB.MINIMIZE)
-
     # Turnover Constraint: Limit changes in holdings if not the first period
     if tau == 2.0:
         is_turnover = False
@@ -172,6 +181,7 @@ def sparse_replicating_optimization_helper(
         ) / window_size
         l1_penalty_value = lambda1 * sum(p_matrix.iloc[0, i] * abs(optimized_s[i] / b) for i in range(num_stocks))
         number_non_zero_stocks = np.count_nonzero(optimized_s)
+        print(number_non_zero_stocks)
         total_turnover = sum(abs(optimized_s[i] - s_prev_t[i]) * p_matrix.iloc[-1, i] for i in range(num_stocks))
         turnover_ratio = total_turnover / b
         info = {
@@ -271,7 +281,8 @@ def construct_sparse_portfolio(r_vector, h_matrix, p_matrix, **kwargs):
         p_matrix_final_test = p_matrix.iloc[t: t + holding_period][valid_cols]
 
         # Hyperparameter tuning, to select the lambda_lasso
-        lambda_lasso_searching_list = [0.0001, 0.0005, 0.001, 0.005, 0.01]
+        # lambda_lasso_searching_list = [0.0001, 0.0005, 0.001, 0.005, 0.01]
+        lambda_lasso_searching_list = [0.0001]
         if lambda_select_indicator % 12 == 0:
             print(f"Run hyperparam tuning on {today}")
             test_mse_result = {}
@@ -397,12 +408,12 @@ if __name__ == '__main__':
     window_size = 252 * 5
     validation_window_size = window_size // 5  # 20% Validation Set
     holding_period = 21
-    replicating_from = holding_period * 12
-    replicating_end = holding_period * 24
+    replicating_from = holding_period * 0
+    replicating_end = holding_period * 12
 
     constraint_param = {
-        "b": 10000,
-        "tau": 0.1,
+        "b":  5000,
+        "tau": 2.0,
         "is_turnover": True
     }
     mode = "ftse_250"  # demo, ftse_250, ftse_all_share

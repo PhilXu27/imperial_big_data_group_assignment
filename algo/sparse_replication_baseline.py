@@ -1,4 +1,4 @@
-from algo.new_sparse_replication import load_data
+from algo.sparse_replication import load_data
 from sklearn.linear_model import Lasso
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import pandas as pd
@@ -52,7 +52,7 @@ def construct_sparse_portfolio_baseline(r_vector, h_matrix):
         h_matrix_final_test = h_matrix.iloc[t: t + holding_period][valid_cols]
 
         # Hyperparameter tuning, to select the lambda_lasso
-        lambda_lasso_searching_list = [0.00001, 0.00005, 0.0001, 0.0005, 0.001]
+        lambda_lasso_searching_list = [0.0000025, 0.000005, 0.0000075, 0.00001, 0.00005, 0.0001]
         test_mse_result = {}
         for test_lambda in lambda_lasso_searching_list:
             mse = sparse_replicating_optimization_baseline(
@@ -94,5 +94,5 @@ if __name__ == '__main__':
     window_size = 252 * 5
     validation_window_size = window_size // 5  # 20% Validation Set
     holding_period = 21
-    mode = "ftse_all_share"
+    mode = "ftse_250"
     main(mode)
