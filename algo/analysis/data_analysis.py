@@ -114,7 +114,7 @@ def main(start_date, end_date, analysis_on):
 
     pv_all.columns = [i if not i.startswith("port") else int(i.replace("port_b_", "").replace("_tau_2.0", "")) // 100
                       for i in pv_all.columns]
-    pv_all.columns = [str(i // 1000) + "k" if isinstance(i, int) and i > 1000 else str(i) for i in pv_all.columns]
+    pv_all.columns = [str(i / 1000) + "k" if isinstance(i, int) and i > 1000 else str(i) for i in pv_all.columns]
     pv_all.to_csv(Path(join(final_results, "pv_all.csv")))
     _, pmetrics = calculate_pmetrics(pv_all, freq_per_year=252, is_reformat=True)
     pmetrics.to_csv(Path(join(final_results, "pmetrics.csv")))
