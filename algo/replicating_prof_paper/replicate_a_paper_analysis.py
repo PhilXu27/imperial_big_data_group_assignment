@@ -14,7 +14,7 @@ def plotting(portfolio_sharpe_ratio, max_sharpe_ratio, single_sharpe_ratio, sing
     max_sharpe = portfolio_sharpe_ratio.max(axis=1).values
     median_sharpe = portfolio_sharpe_ratio.median(axis=1).values
     # Convert portfolio values to a discrete numeric index for even spacing
-    x_labels = [single_price] + [str(v) if v < 1000 else str(v // 1000) + "k" for v in portfolio_values] + ["Market"]
+    x_labels = [single_price] + [str(v) if v < 1000 else str(v / 1000) + "k" for v in portfolio_values] + ["Market"]
     x_positions = list(range(len(portfolio_values) + 2))
 
     # Plotting again with discrete x-axis
@@ -33,7 +33,7 @@ def plotting(portfolio_sharpe_ratio, max_sharpe_ratio, single_sharpe_ratio, sing
     # Formatting
     ax.set_xticks(x_positions)
     ax.set_xticklabels(x_labels, rotation=45)
-    ax.set_xlabel("Portfolio Value (GBP)")
+    ax.set_xlabel("Portfolio Budget (GBP)")
     ax.set_ylabel("Sharpe Ratio (Annualized)")
     ax.legend()
 
